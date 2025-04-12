@@ -14,3 +14,5 @@ const connectDB = async () => {
 };
 
 module.exports = connectDB;
+
+//este codigo se llama database.js

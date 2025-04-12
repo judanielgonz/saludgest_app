@@ -7,10 +7,15 @@ exports.login = async (req, res) => {
   const { correo, contrasena } = req.body;
   try {
     const persona = await Persona.findOne({ correo });
-    if (!persona || !await bcrypt.compare(contrasena, persona.contraseña)) {
+    if (!persona || !(await bcrypt.compare(contrasena, persona.contraseña))) {
       return res.status(401).json({ success: false, message: 'Credenciales incorrectas' });
     }
-    res.json({ success: true, tipoUsuario: persona.rol.toLowerCase(), medicoAsignado: persona.medico_asignado?.toString() });
+    res.json({
+      success: true,
+      tipoUsuario: persona.rol.toLowerCase(),
+      medicoAsignado: persona.medico_asignado?.toString(),
+      usuarioId: persona._id.toString(), // Añadimos el usuarioId
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -58,10 +63,17 @@ exports.asignarMedico = async (req, res) => {
   try {
     const paciente = await Persona.findOne({ correo: pacienteCorreo });
     const medico = await Persona.findOne({ correo: medicoCorreo });
-    if (!paciente || !medico) return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
-    if (medico.rol !== 'Médico') return res.status(400).json({ success: false, error: 'El usuario seleccionado no es un médico' });
+    if (!paciente || !medico) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    }
+    if (medico.rol !== 'Médico') {
+      return res.status(400).json({ success: false, error: 'El usuario seleccionado no es un médico' });
+    }
     paciente.medico_asignado = medico._id;
-    medico.pacientes_asignados.push(paciente._id);
+    medico.pacientes_asignados = medico.pacientes_asignados || [];
+    if (!medico.pacientes_asignados.includes(paciente._id)) {
+      medico.pacientes_asignados.push(paciente._id);
+    }
     await paciente.save();
     await medico.save();
     res.json({ success: true });
@@ -72,7 +84,9 @@ exports.asignarMedico = async (req, res) => {
 
 exports.getMedicosDisponibles = async (req, res) => {
   try {
-    const medicos = await Persona.find({ rol: 'Médico' });
+    const medicos = await Persona.find({ rol: 'Médico' })
+      .select('nombre_completo correo especialidad _id')
+      .lean();
     res.json({ success: true, medicos });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -83,17 +97,24 @@ exports.registrarDisponibilidad = async (req, res) => {
   const { correo, dia, horario } = req.body;
   try {
     const medico = await Persona.findOne({ correo });
-    if (!medico) return res.status(404).json({ success: false, error: 'Médico no encontrado' });
-    if (medico.rol !== 'Médico') return res.status(400).json({ success: false, error: 'El usuario no es un médico' });
+    if (!medico) {
+      return res.status(404).json({ success: false, error: 'Médico no encontrado' });
+    }
+    if (medico.rol !== 'Médico') {
+      return res.status(400).json({ success: false, error: 'El usuario no es un médico' });
+    }
 
-    // Separar hora_inicio y hora_fin del horario (formato: "HH:MM - HH:MM")
     const [horaInicio, horaFin] = horario.split(' - ').map(h => h.trim());
-    
-    // Añadir la disponibilidad al médico
-    medico.disponibilidad.push({
-      dia,
-      horarios: [{ inicio: horaInicio, fin: horaFin }]
-    });
+    medico.disponibilidad = medico.disponibilidad || [];
+    const diaExistente = medico.disponibilidad.find(d => d.dia === dia);
+    if (diaExistente) {
+      diaExistente.horarios.push({ inicio: horaInicio, fin: horaFin });
+    } else {
+      medico.disponibilidad.push({
+        dia,
+        horarios: [{ inicio: horaInicio, fin: horaFin }],
+      });
+    }
     await medico.save();
     res.status(201).json({ success: true });
   } catch (error) {
@@ -103,23 +124,21 @@ exports.registrarDisponibilidad = async (req, res) => {
 
 exports.getDisponibilidad = async (req, res) => {
   try {
-    // Buscar todos los médicos con disponibilidad
     const medicos = await Persona.find(
       { rol: 'Médico', disponibilidad: { $ne: [] } },
       { nombre_completo: 1, correo: 1, especialidad: 1, disponibilidad: 1, _id: 1 }
-    );
+    ).lean();
 
-    // Formatear la respuesta para que sea más fácil de usar en el frontend
-    const disponibilidad = medicos.map(medico => ({
-      id: medico._id.toString(),
-      nombre: medico.nombre_completo,
-      correo: medico.correo,
-      especialidad: medico.especialidad || 'No especificada',
-      disponibilidad: medico.disponibilidad.map(disp => ({
+    const disponibilidad = medicos.flatMap(medico =>
+      medico.disponibilidad.map(disp => ({
+        id: medico._id.toString(),
+        nombre: medico.nombre_completo,
+        correo: medico.correo,
+        especialidad: medico.especialidad || 'No especificada',
         dia: disp.dia,
-        horario: disp.horarios.map(h => `${h.inicio} - ${h.fin}`)[0] // Tomamos el primer horario
+        horario: disp.horarios.map(h => `${h.inicio} - ${h.fin}`).join(', '),
       }))
-    }));
+    );
 
     res.status(200).json(disponibilidad);
   } catch (error) {
@@ -130,17 +149,13 @@ exports.getDisponibilidad = async (req, res) => {
 exports.agendarCita = async (req, res) => {
   const { pacienteCorreo, medicoCorreo, dia, horario } = req.body;
   try {
-    // Buscar el paciente y el médico por correo
     const paciente = await Persona.findOne({ correo: pacienteCorreo });
     const medico = await Persona.findOne({ correo: medicoCorreo });
     if (!paciente || !medico) {
       return res.status(404).json({ success: false, error: 'Paciente o médico no encontrado' });
     }
 
-    // Separar hora_inicio y hora_fin del horario
     const [horaInicio, horaFin] = horario.split(' - ').map(h => h.trim());
-
-    // Verificar que la disponibilidad aún exista
     const disponibilidad = medico.disponibilidad.find(
       disp => disp.dia === dia && disp.horarios.some(h => h.inicio === horaInicio && h.fin === horaFin)
     );
@@ -148,7 +163,6 @@ exports.agendarCita = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Horario no disponible' });
     }
 
-    // Verificar si ya existe una cita en ese horario para el médico
     const citaExistente = await Cita.findOne({
       persona_medico_id: medico._id,
       fecha: new Date(dia),
@@ -159,16 +173,14 @@ exports.agendarCita = async (req, res) => {
       return res.status(400).json({ success: false, error: 'El médico ya tiene una cita en ese horario' });
     }
 
-    // Eliminar la disponibilidad usada
     medico.disponibilidad = medico.disponibilidad.map(disp => {
       if (disp.dia === dia) {
         disp.horarios = disp.horarios.filter(h => h.inicio !== horaInicio || h.fin !== horaFin);
       }
       return disp;
-    }).filter(disp => disp.horarios.length > 0); // Eliminar días sin horarios
+    }).filter(disp => disp.horarios.length > 0);
     await medico.save();
 
-    // Guardar la cita
     const cita = new Cita({
       persona_paciente_id: paciente._id,
       persona_medico_id: medico._id,
@@ -191,6 +203,9 @@ exports.getDatos = async (req, res) => {
   const { correo } = req.query;
   try {
     const persona = await Persona.findOne({ correo });
+    if (!persona) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    }
     const historial = await HistorialMedico.findOne({ persona_paciente_id: persona._id });
     res.json([{ ...persona.toObject(), historial_medico: historial || {} }]);
   } catch (error) {
@@ -202,9 +217,15 @@ exports.registrarHistorial = async (req, res) => {
   const { correo, historial } = req.body;
   try {
     const paciente = await Persona.findOne({ correo });
+    if (!paciente) {
+      return res.status(404).json({ success: false, error: 'Paciente no encontrado' });
+    }
     let historialMedico = await HistorialMedico.findOne({ persona_paciente_id: paciente._id });
     if (!historialMedico) {
-      historialMedico = new HistorialMedico({ persona_paciente_id: paciente._id, persona_medico_id: paciente.medico_asignado });
+      historialMedico = new HistorialMedico({
+        persona_paciente_id: paciente._id,
+        persona_medico_id: paciente.medico_asignado,
+      });
     }
     historialMedico = Object.assign(historialMedico, historial);
     await historialMedico.save();
@@ -217,7 +238,7 @@ exports.registrarHistorial = async (req, res) => {
 exports.getPersonas = async (req, res) => {
   const { rol } = req.query;
   try {
-    const personas = await Persona.find({ rol });
+    const personas = await Persona.find({ rol }).lean();
     res.json(personas);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -228,6 +249,9 @@ exports.updatePersona = async (req, res) => {
   const { correo, ...updates } = req.body;
   try {
     const persona = await Persona.findOneAndUpdate({ correo }, updates, { new: true });
+    if (!persona) {
+      return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
+    }
     res.json({ success: true, persona });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
@@ -250,9 +274,12 @@ exports.obtenerPorId = async (req, res) => {
 exports.obtenerPacientesAsignados = async (req, res) => {
   const { medicoId } = req.query;
   try {
-    const pacientes = await Persona.find({ medico_asignado: medicoId });
+    const pacientes = await Persona.find({ medico_asignado: medicoId })
+      .select('nombre_completo correo _id')
+      .lean();
     res.json({ success: true, pacientes });
   } catch (error) {
+    console.error('Error en obtenerPacientesAsignados:', error);
     res.status(400).json({ success: false, error: error.message });
   }
 };
@@ -273,7 +300,6 @@ exports.obtenerPorCorreo = async (req, res) => {
 exports.obtenerCitas = async (req, res) => {
   const { correo, tipoUsuario } = req.query;
   try {
-    // Buscar al usuario por correo
     const persona = await Persona.findOne({ correo });
     if (!persona) {
       return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
@@ -292,15 +318,13 @@ exports.obtenerCitas = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Tipo de usuario no válido' });
     }
 
-    // Si no hay citas, devolver una lista vacía
     if (!citas || citas.length === 0) {
       return res.json({ success: true, citas: [] });
     }
 
-    // Formatear las citas para incluir los datos poblados
     const citasFormateadas = citas.map(cita => ({
       _id: cita._id,
-      fecha: cita.fecha.toISOString().split('T')[0], // Formato yyyy-MM-dd
+      fecha: cita.fecha.toISOString().split('T')[0],
       hora_inicio: cita.hora_inicio,
       hora_fin: cita.hora_fin,
       persona_paciente_id: {

@@ -8,13 +8,22 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "body-parser": "^1.20.3",
     "cors": "^2.8.5",
     "express": "^4.21.2",
-    "mongoose": "^8.9.5",
-    "firebase-admin": "^12.5.0" 
-  }
+    "firebase-admin": "^12.5.0",
+    "mongoose": "^8.13.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/judanielgonz/saludgest_app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/judanielgonz/saludgest_app/issues"
+  },
+  "homepage": "https://github.com/judanielgonz/saludgest_app#readme",
+  "devDependencies": {},
+  "description": ""
 }

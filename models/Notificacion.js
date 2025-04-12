@@ -10,3 +10,5 @@ const NotificacionSchema = new mongoose.Schema({
 });
 
 module.exports = mongoose.model('Notificacion', NotificacionSchema);
+
+//este codigo se llama Notificacion.js

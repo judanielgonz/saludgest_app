@@ -29,3 +29,4 @@ exports.registrarAlarma = async (req, res) => {
     res.status(400).json({ success: false, error: error.message });
   }
 };
+//este codigo se llama alarmaController.js

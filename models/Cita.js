@@ -12,3 +12,5 @@ const citaSchema = new mongoose.Schema({
 });
 
 module.exports = mongoose.model('Cita', citaSchema);
+
+//este codigo se llama Cita.js

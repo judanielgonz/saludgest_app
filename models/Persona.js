@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const PersonaSchema = new mongoose.Schema({
-  rol: { type: String, enum: ['Paciente', 'Médico', 'Admin'], required: true }, // Añadido 'Admin'
+  rol: { type: String, enum: ['Paciente', 'Médico', 'Admin', 'Secretario'], required: true },
   nombre_completo: { type: String, required: true },
   correo: { type: String, required: true, unique: true },
   telefono: { type: String, required: true },

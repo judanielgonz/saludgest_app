@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const personaRoutes = require('./routes/personaRoutes');
+const historialRoutes = require('./routes/historialRoutes');
 const mensajeRoutes = require('./routes/mensajeRoutes');
 
 const app = express();
@@ -17,10 +18,11 @@ mongoose.connect('mongodb://localhost:27017/saludgest', {
   useUnifiedTopology: true,
 })
   .then(() => console.log('MongoDB connected'))
-  .catch(err => console.log(err));
+  .catch(err => console.log('Error al conectar a MongoDB:', err));
 
 // Rutas
 app.use('/api/pacientes', personaRoutes);
+app.use('/api/historial', historialRoutes);
 app.use('/api/mensajes', mensajeRoutes);
 
 // Iniciar el servidor

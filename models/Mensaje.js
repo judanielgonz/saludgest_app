@@ -13,3 +13,5 @@ const MensajeSchema = new mongoose.Schema({
 });
 
 module.exports = mongoose.model('Mensaje', MensajeSchema);
+
+//este codigo se llama Mensaje.js

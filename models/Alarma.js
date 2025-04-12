@@ -15,3 +15,5 @@ const AlarmaSchema = new mongoose.Schema({
 });
 
 module.exports = mongoose.model('Alarma', AlarmaSchema);
+
+//este codigo se llama Alarma.js

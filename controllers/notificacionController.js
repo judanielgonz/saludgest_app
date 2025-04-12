@@ -8,3 +8,4 @@ exports.getNotificaciones = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+//este codigo se llama notificacionController.js

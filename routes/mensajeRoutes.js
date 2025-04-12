@@ -6,3 +6,5 @@ router.get('/obtener', mensajeController.getMensajes); // Cambiamos a /obtener y
 router.post('/enviar', mensajeController.enviarMensaje);
 
 module.exports = router;
+
+//este codigo se llama mensajeRoutes.js
