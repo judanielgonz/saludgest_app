@@ -14,7 +14,7 @@ exports.login = async (req, res) => {
       success: true,
       tipoUsuario: persona.rol.toLowerCase(),
       medicoAsignado: persona.medico_asignado?.toString(),
-      usuarioId: persona._id.toString(), // Añadimos el usuarioId
+      usuarioId: persona._id.toString(),
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -94,7 +94,7 @@ exports.getMedicosDisponibles = async (req, res) => {
 };
 
 exports.registrarDisponibilidad = async (req, res) => {
-  const { correo, dia, horario } = req.body;
+  const { correo, dia, horario, consultorio } = req.body;
   try {
     const medico = await Persona.findOne({ correo });
     if (!medico) {
@@ -108,13 +108,14 @@ exports.registrarDisponibilidad = async (req, res) => {
     medico.disponibilidad = medico.disponibilidad || [];
     const diaExistente = medico.disponibilidad.find(d => d.dia === dia);
     if (diaExistente) {
-      diaExistente.horarios.push({ inicio: horaInicio, fin: horaFin });
+      diaExistente.horarios.push({ inicio: horaInicio, fin: horaFin, consultorio });
     } else {
       medico.disponibilidad.push({
         dia,
-        horarios: [{ inicio: horaInicio, fin: horaFin }],
+        horarios: [{ inicio: horaInicio, fin: horaFin, consultorio }],
       });
     }
+    medico.ultima_actualizacion = new Date();
     await medico.save();
     res.status(201).json({ success: true });
   } catch (error) {
@@ -137,6 +138,7 @@ exports.getDisponibilidad = async (req, res) => {
         especialidad: medico.especialidad || 'No especificada',
         dia: disp.dia,
         horario: disp.horarios.map(h => `${h.inicio} - ${h.fin}`).join(', '),
+        consultorio: disp.horarios[0]?.consultorio || 'No especificado', // Añadimos el consultorio
       }))
     );
 

@@ -1,5 +1,13 @@
 const HistorialMedico = require('../models/HistorialMedico');
 const Persona = require('../models/Persona');
+const path = require('path');
+const fs = require('fs');
+
+// Configuración del directorio de uploads
+const uploadDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 exports.obtenerPorCorreo = async (req, res) => {
   const { correo } = req.query;
@@ -16,7 +24,8 @@ exports.obtenerPorCorreo = async (req, res) => {
       .populate('diagnosticos.registrado_por')
       .populate('tratamientos.registrado_por')
       .populate('medicamentos.registrado_por')
-      .populate('resultados_analisis.registrado_por');
+      .populate('resultados_analisis.registrado_por')
+      .populate('documentos.registrado_por');
 
     res.json({ success: true, historial });
   } catch (error) {
@@ -26,20 +35,18 @@ exports.obtenerPorCorreo = async (req, res) => {
 };
 
 exports.guardarEntrada = async (req, res) => {
-  const { correo, tipo, datos } = req.body;
-  const pacienteCorreo = datos.pacienteCorreo; // Correo del paciente cuyo historial se modifica
+  const { correo, tipo, datos, pacienteCorreo } = req.body;
+
   try {
-    if (!correo || !tipo || !datos || !pacienteCorreo) {
+    if (!correo || !tipo || !pacienteCorreo) {
       return res.status(400).json({ success: false, message: 'Faltan datos requeridos' });
     }
 
-    // Buscar al usuario que registra la entrada (puede ser médico o paciente)
     const registrador = await Persona.findOne({ correo });
     if (!registrador) {
       return res.status(404).json({ success: false, message: 'Usuario registrador no encontrado' });
     }
 
-    // Buscar al paciente cuyo historial se modificará
     const paciente = await Persona.findOne({ correo: pacienteCorreo });
     if (!paciente) {
       return res.status(404).json({ success: false, message: 'Paciente no encontrado' });
@@ -120,7 +127,90 @@ exports.guardarEntrada = async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Error en guardarEntrada:', error);
-    res.status(400).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.subirDocumento = async (req, res) => {
+  const { correo, pacienteCorreo } = req.body;
+  const file = req.file;
+
+  try {
+    if (!correo || !pacienteCorreo || !file) {
+      return res.status(400).json({ success: false, message: 'Faltan datos o archivo requeridos' });
+    }
+
+    const registrador = await Persona.findOne({ correo });
+    if (!registrador) {
+      return res.status(404).json({ success: false, message: 'Usuario registrador no encontrado' });
+    }
+
+    if (registrador.rol !== 'Médico') {
+      return res.status(403).json({ success: false, message: 'Solo los médicos pueden subir documentos' });
+    }
+
+    const paciente = await Persona.findOne({ correo: pacienteCorreo });
+    if (!paciente) {
+      return res.status(404).json({ success: false, message: 'Paciente no encontrado' });
+    }
+
+    let historial = await HistorialMedico.findOne({ persona_paciente_id: paciente._id });
+    if (!historial) {
+      if (!paciente.medico_asignado) {
+        return res.status(400).json({ success: false, message: 'El paciente no tiene un médico asignado' });
+      }
+      historial = new HistorialMedico({
+        persona_paciente_id: paciente._id,
+        persona_medico_id: paciente.medico_asignado,
+      });
+    }
+
+    const documento = {
+      nombre: file.originalname,
+      ruta: file.path,
+      fecha: new Date(),
+      registrado_por: registrador._id,
+    };
+
+    historial.documentos.push(documento);
+    historial.ultima_actualizacion = new Date();
+    await historial.save();
+
+    res.json({ success: true, message: 'Documento subido con éxito', documento });
+  } catch (error) {
+    console.error('Error en subirDocumento:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.descargarDocumento = async (req, res) => {
+  const { historialId, documentoId } = req.params;
+
+  try {
+    const historial = await HistorialMedico.findById(historialId);
+    if (!historial) {
+      return res.status(404).json({ success: false, message: 'Historial no encontrado' });
+    }
+
+    const documento = historial.documentos.id(documentoId);
+    if (!documento) {
+      return res.status(404).json({ success: false, message: 'Documento no encontrado' });
+    }
+
+    const filePath = path.resolve(documento.ruta);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: 'Archivo no encontrado en el servidor' });
+    }
+
+    res.download(filePath, documento.nombre, (err) => {
+      if (err) {
+        console.error('Error al descargar el archivo:', err);
+        res.status(500).json({ success: false, error: 'Error al descargar el archivo' });
+      }
+    });
+  } catch (error) {
+    console.error('Error en descargarDocumento:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
@@ -175,6 +265,6 @@ exports.actualizarEntrada = async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Error en actualizarEntrada:', error);
-    res.status(400).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 };

@@ -51,6 +51,14 @@ const HistorialMedicoSchema = new mongoose.Schema({
       registrado_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
     },
   ],
+  documentos: [
+    {
+      nombre: { type: String, required: true },
+      ruta: { type: String, required: true },
+      fecha: { type: Date, default: Date.now },
+      registrado_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
+    },
+  ],
   ultima_actualizacion: { type: Date, default: Date.now },
 });
 
