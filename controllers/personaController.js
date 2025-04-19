@@ -1,7 +1,22 @@
+require('dotenv').config(); // Forzar carga de .env
 const Persona = require('../models/Persona');
 const HistorialMedico = require('../models/HistorialMedico');
 const Cita = require('../models/Cita');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
+
+// Configurar Nodemailer
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// Verificar credenciales al cargar el módulo
+console.log('personaController - EMAIL_USER:', process.env.EMAIL_USER);
+console.log('personaController - EMAIL_PASS:', process.env.EMAIL_PASS ? 'Configurado' : 'No configurado');
 
 exports.login = async (req, res) => {
   const { correo, contrasena } = req.body;
@@ -24,15 +39,47 @@ exports.login = async (req, res) => {
 exports.savePersona = async (req, res) => {
   const { nombre_completo, correo, contrasena, telefono, rol } = req.body;
   try {
+    // Verificar si el correo ya está registrado
+    const existingPersona = await Persona.findOne({ correo });
+    if (existingPersona) {
+      return res.status(400).json({ success: false, error: 'El correo ya está registrado.' });
+    }
+
     const hashedPassword = await bcrypt.hash(contrasena, 10);
     const persona = new Persona({
       rol: rol || 'Paciente',
       nombre_completo,
       correo,
       telefono,
-      contraseña: hashedPassword,
+      contraseña: hashedPassword, // Usar contraseña con tilde
     });
     await persona.save();
+
+    // Enviar correo de confirmación
+    const mailOptions = {
+      from: `SaludGest <${process.env.EMAIL_USER}>`,
+      to: correo,
+      subject: 'Bienvenido a SaludGest',
+      html: `
+        <h2>¡Bienvenido, ${nombre_completo}!</h2>
+        <p>Tu cuenta ha sido registrada exitosamente en SaludGest.</p>
+        <p>Inicia sesión para comenzar a gestionar tus citas médicas.</p>
+        <p>Gracias por unirte a nosotros.</p>
+        <p>El equipo de SaludGest</p>
+      `,
+    };
+
+    try {
+      console.log('Enviando correo a:', correo);
+      console.log('EMAIL_USER en savePersona:', process.env.EMAIL_USER);
+      console.log('EMAIL_PASS en savePersona:', process.env.EMAIL_PASS ? 'Configurado' : 'No configurado');
+      await transporter.sendMail(mailOptions);
+      console.log(`Correo de confirmación enviado a ${correo}`);
+    } catch (emailError) {
+      console.error(`Error enviando correo a ${correo}:`, emailError);
+      // No fallar el registro si el correo no se envía
+    }
+
     res.status(201).json({ success: true });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
@@ -48,8 +95,7 @@ exports.registrarMedico = async (req, res) => {
       nombre_completo,
       correo,
       telefono,
-      contraseña: hashedPassword,
-      especialidad,
+      contraseña: hashedPassword, // Usar contraseña con tilde
     });
     await persona.save();
     res.status(201).json({ success: true });
@@ -138,7 +184,7 @@ exports.getDisponibilidad = async (req, res) => {
         especialidad: medico.especialidad || 'No especificada',
         dia: disp.dia,
         horario: disp.horarios.map(h => `${h.inicio} - ${h.fin}`).join(', '),
-        consultorio: disp.horarios[0]?.consultorio || 'No especificado', // Añadimos el consultorio
+        consultorio: disp.horarios[0]?.consultorio || 'No especificado',
       }))
     );
 
@@ -296,6 +342,71 @@ exports.obtenerPorCorreo = async (req, res) => {
     res.json({ success: true, persona });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.eliminarDisponibilidad = async (req, res) => {
+  const { correo, dia, horario } = req.body;
+  try {
+    const medico = await Persona.findOne({ correo });
+    if (!medico) {
+      return res.status(404).json({ success: false, error: 'Médico no encontrado' });
+    }
+    if (medico.rol !== 'Médico') {
+      return res.status(400).json({ success: false, error: 'El usuario no es un médico' });
+    }
+
+    const [horaInicio, horaFin] = horario.split(' - ').map(h => h.trim());
+    medico.disponibilidad = medico.disponibilidad.map(disp => {
+      if (disp.dia === dia) {
+        disp.horarios = disp.horarios.filter(h => h.inicio !== horaInicio || h.fin !== horaFin);
+      }
+      return disp;
+    }).filter(disp => disp.horarios.length > 0);
+
+    medico.ultima_actualizacion = new Date();
+    await medico.save();
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
+exports.actualizarDisponibilidad = async (req, res) => {
+  const { correo, diaAntiguo, horarioAntiguo, diaNuevo, horarioNuevo, consultorio } = req.body;
+  try {
+    const medico = await Persona.findOne({ correo });
+    if (!medico) {
+      return res.status(404).json({ success: false, error: 'Médico no encontrado' });
+    }
+    if (medico.rol !== 'Médico') {
+      return res.status(400).json({ success: false, error: 'El usuario no es un médico' });
+    }
+
+    const [horaInicioAntigua, horaFinAntigua] = horarioAntiguo.split(' - ').map(h => h.trim());
+    medico.disponibilidad = medico.disponibilidad.map(disp => {
+      if (disp.dia === diaAntiguo) {
+        disp.horarios = disp.horarios.filter(h => h.inicio !== horaInicioAntigua || h.fin !== horaFinAntigua);
+      }
+      return disp;
+    }).filter(disp => disp.horarios.length > 0);
+
+    const [horaInicioNueva, horaFinNueva] = horarioNuevo.split(' - ').map(h => h.trim());
+    const diaExistente = medico.disponibilidad.find(d => d.dia === diaNuevo);
+    if (diaExistente) {
+      diaExistente.horarios.push({ inicio: horaInicioNueva, fin: horaFinNueva, consultorio });
+    } else {
+      medico.disponibilidad.push({
+        dia: diaNuevo,
+        horarios: [{ inicio: horaInicioNueva, fin: horaFinNueva, consultorio }],
+      });
+    }
+
+    medico.ultima_actualizacion = new Date();
+    await medico.save();
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
   }
 };
 

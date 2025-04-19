@@ -6,7 +6,7 @@ const multer = require('multer');
 // Configuración de multer para subir archivos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = 'uploads/';
+    const uploadDir = 'Uploads/';
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
