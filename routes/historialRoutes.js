@@ -1,6 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const historialController = require('../controllers/historialController');
+const { 
+  obtenerPorCorreo,
+  guardarEntrada,
+  subirDocumento,
+  descargarDocumento,
+  actualizarEntrada,
+  analyzeSymptoms 
+} = require('../controllers/historialController');
 const multer = require('multer');
 
 // Configuración de multer para subir archivos
@@ -27,16 +34,17 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // Límite de 5MB para el archivo
 });
 
-router.get('/obtener-por-correo', historialController.obtenerPorCorreo);
-router.post('/guardar-entrada', historialController.guardarEntrada);
-router.put('/actualizar-entrada', historialController.actualizarEntrada);
+// Rutas
+router.post('/generar-diagnostico', analyzeSymptoms);
+router.get('/obtener-por-correo', obtenerPorCorreo);
+router.post('/guardar-entrada', guardarEntrada);
+router.put('/actualizar-entrada', actualizarEntrada);
 router.post('/subir-documento', upload.single('documento'), (req, res, next) => {
-  // Middleware para manejar errores de multer
   if (!req.file) {
     return res.status(400).json({ success: false, error: 'No se proporcionó un archivo o el archivo no es un PDF' });
   }
   next();
-}, historialController.subirDocumento);
-router.get('/descargar-documento/:historialId/:documentoId', historialController.descargarDocumento);
+}, subirDocumento);
+router.get('/descargar-documento/:historialId/:documentoId', descargarDocumento);
 
 module.exports = router;
