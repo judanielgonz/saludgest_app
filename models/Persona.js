@@ -7,7 +7,8 @@ const PersonaSchema = new mongoose.Schema({
   telefono: { type: String, required: true },
   contraseña: { type: String, required: true },
   fecha_registro: { type: Date, default: Date.now },
-  medico_asignado: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', default: null },
+  medico_asignado: { type: String, default: null },
+  medicos_con_permiso: [{ type: String }], // Lista de correos de médicos con permiso
   especialidad: { type: String },
   disponibilidad: [
     {

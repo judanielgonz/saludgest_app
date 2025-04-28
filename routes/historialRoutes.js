@@ -4,6 +4,7 @@ const {
   obtenerPorCorreo,
   guardarEntrada,
   subirDocumento,
+  subirResultadoAnalisis,
   descargarDocumento,
   actualizarEntrada,
   analyzeSymptoms 
@@ -45,6 +46,12 @@ router.post('/subir-documento', upload.single('documento'), (req, res, next) => 
   }
   next();
 }, subirDocumento);
+router.post('/subir-resultado-analisis', upload.single('documento'), (req, res, next) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'No se proporcionó un archivo o el archivo no es un PDF' });
+  }
+  next();
+}, subirResultadoAnalisis);
 router.get('/descargar-documento/:historialId/:documentoId', descargarDocumento);
 
 module.exports = router;

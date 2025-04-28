@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const HistorialMedicoSchema = new mongoose.Schema({
   persona_paciente_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
-  persona_medico_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
+  persona_medico_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona' }, // No requerido inicialmente
   sintomas: [
     {
       fecha: { type: Date, default: Date.now },
@@ -15,6 +15,7 @@ const HistorialMedicoSchema = new mongoose.Schema({
       fecha: { type: Date, default: Date.now },
       descripcion: { type: String, required: true },
       registrado_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
+      sintomas_relacionados: [{ type: mongoose.Schema.Types.ObjectId, ref: 'HistorialMedico.sintomas' }],
     },
   ],
   tratamientos: [
@@ -22,6 +23,7 @@ const HistorialMedicoSchema = new mongoose.Schema({
       fecha: { type: Date, default: Date.now },
       descripcion: { type: String, required: true },
       registrado_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
+      diagnostico_relacionado: { type: mongoose.Schema.Types.ObjectId, ref: 'HistorialMedico.diagnosticos' }, // Correct reference
     },
   ],
   medicamentos: [
@@ -32,6 +34,7 @@ const HistorialMedicoSchema = new mongoose.Schema({
       fecha_inicio: { type: Date, default: Date.now },
       fecha_fin: { type: Date },
       registrado_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
+      tratamiento_relacionado: { type: mongoose.Schema.Types.ObjectId, ref: 'HistorialMedico.tratamientos' },
     },
   ],
   ordenes_analisis: [

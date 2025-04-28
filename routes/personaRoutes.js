@@ -20,5 +20,6 @@ router.get('/obtener-por-correo', personaController.obtenerPorCorreo);
 router.get('/citas', personaController.obtenerCitas);
 router.post('/eliminar-disponibilidad', personaController.eliminarDisponibilidad);
 router.post('/actualizar-disponibilidad', personaController.actualizarDisponibilidad);
+router.post('/otorgar-permiso', personaController.otorgarPermisoHistorial); // Nueva ruta
 
 module.exports = router;

@@ -319,12 +319,21 @@ exports.obtenerPorId = async (req, res) => {
   }
 };
 
+// Modificado: Ahora incluye pacientes con permisos en medicos_con_permiso
 exports.obtenerPacientesAsignados = async (req, res) => {
   const { medicoId } = req.query;
   try {
-    const pacientes = await Persona.find({ medico_asignado: medicoId })
-      .select('nombre_completo correo _id')
-      .lean();
+    const medico = await Persona.findById(medicoId);
+    if (!medico || medico.rol !== 'Médico') {
+      return res.status(404).json({ success: false, error: 'Médico no encontrado' });
+    }
+    const pacientes = await Persona.find({
+      rol: 'Paciente',
+      $or: [
+        { medico_asignado: medicoId },
+        { medicos_con_permiso: medico.correo },
+      ],
+    }).select('nombre_completo correo _id').lean();
     res.json({ success: true, pacientes });
   } catch (error) {
     console.error('Error en obtenerPacientesAsignados:', error);
@@ -451,6 +460,28 @@ exports.obtenerCitas = async (req, res) => {
     }));
 
     res.json({ success: true, citas: citasFormateadas });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Nueva función: Otorgar permiso a otro médico para ver el historial
+exports.otorgarPermisoHistorial = async (req, res) => {
+  const { pacienteCorreo, medicoCorreo } = req.body;
+  try {
+    const paciente = await Persona.findOne({ correo: pacienteCorreo, rol: 'Paciente' });
+    if (!paciente) {
+      return res.status(404).json({ success: false, error: 'Paciente no encontrado' });
+    }
+    const medico = await Persona.findOne({ correo: medicoCorreo, rol: 'Médico' });
+    if (!medico) {
+      return res.status(404).json({ success: false, error: 'Médico no encontrado' });
+    }
+    if (!paciente.medicos_con_permiso.includes(medicoCorreo)) {
+      paciente.medicos_con_permiso.push(medicoCorreo);
+      await paciente.save();
+    }
+    res.json({ success: true, message: 'Permiso otorgado con éxito' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

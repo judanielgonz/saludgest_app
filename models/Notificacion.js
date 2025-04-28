@@ -1,14 +1,14 @@
 const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
 
-const NotificacionSchema = new mongoose.Schema({
-  persona_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
+const NotificacionSchema = new Schema({
   tipo: { type: String, required: true },
   contenido: { type: String, required: true },
-  fecha_envio: { type: Date, default: Date.now },
-  estado: { type: String, default: 'Entregada' },
-  canal: { type: String, enum: ['Push', 'Email'], required: true },
+  destinatario: { type: String, required: true },
+  estado: { type: String, required: true },
+  fecha: { type: Date, required: true },
+  canal: { type: String, required: true },
+  persona_id: { type: Schema.Types.ObjectId, ref: 'Persona', required: true },
 });
 
 module.exports = mongoose.model('Notificacion', NotificacionSchema);
-
-//este codigo se llama Notificacion.js

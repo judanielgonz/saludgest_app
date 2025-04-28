@@ -1,11 +1,11 @@
 const Notificacion = require('../models/Notificacion');
 
-exports.getNotificaciones = async (req, res) => {
+exports.obtenerNotificaciones = async (req, res) => {
   try {
-    const notificaciones = await Notificacion.find();
-    res.json(notificaciones);
+    const notificaciones = await Notificacion.find({ estado: 'Entregada' });
+    res.status(200).json(notificaciones);
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Error al obtener notificaciones:', error);
+    res.status(500).json({ success: false, error: 'Error al obtener notificaciones' });
   }
 };
-//este codigo se llama notificacionController.js
