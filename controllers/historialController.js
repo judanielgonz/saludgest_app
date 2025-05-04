@@ -1,6 +1,6 @@
 const HistorialMedico = require('../models/HistorialMedico');
 const Persona = require('../models/Persona');
-const Notificacion = require('../models/Notificacion'); // Añadimos el modelo Notificacion
+const Notificacion = require('../models/Notificacion');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
@@ -19,7 +19,6 @@ const obtenerPorCorreo = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     }
 
-    // Verificar permisos si el solicitante es un médico
     if (persona.rol === 'Médico') {
       const historial = await HistorialMedico.find({ persona_paciente_id: { $ne: persona._id } })
         .populate('persona_paciente_id')
@@ -31,7 +30,6 @@ const obtenerPorCorreo = async (req, res) => {
         .populate('resultados_analisis.registrado_por')
         .populate('documentos.registrado_por');
 
-      // Filtrar historiales para incluir solo aquellos donde el médico tiene permiso
       const historialFiltrado = historial.filter(h => {
         const paciente = h.persona_paciente_id;
         return paciente.medico_asignado === persona._id.toString() || 
@@ -40,7 +38,6 @@ const obtenerPorCorreo = async (req, res) => {
 
       res.json({ success: true, historial: historialFiltrado });
     } else {
-      // Para pacientes u otros roles, devolver su propio historial
       const historial = await HistorialMedico.find({ persona_paciente_id: persona._id })
         .populate('persona_paciente_id')
         .populate('persona_medico_id')
@@ -96,12 +93,15 @@ const guardarEntrada = async (req, res) => {
 
     switch (tipo) {
       case 'sintomas':
+        if (registrador.rol !== 'Paciente' && registrador.rol !== 'Médico') {
+          return res.status(403).json({ success: false, message: 'Solo pacientes y médicos pueden registrar síntomas' });
+        }
         if (!datos.descripcion) {
           return res.status(400).json({ success: false, message: 'La descripción del síntoma es requerida' });
         }
         historial.sintomas.push(entrada);
-        notificacionTipo = 'Nuevo Síntoma';
-        notificacionMensaje = `Se ha registrado un nuevo síntoma: ${datos.descripcion}`;
+        notificacionTipo = 'Actualización de Historial';
+        notificacionMensaje = `El paciente ${paciente.nombre_completo} ha añadido un síntoma en su historial: ${datos.descripcion}`;
         break;
       case 'diagnosticos':
         if (registrador.rol !== 'Médico') {
@@ -113,18 +113,23 @@ const guardarEntrada = async (req, res) => {
         if (!datos.descripcion) {
           return res.status(400).json({ success: false, message: 'La descripción del diagnóstico es requerida' });
         }
-        // Si se proporciona un sintoma_id, añadirlo a sintomas_relacionados
         if (datos.sintoma_id) {
-          // Verificar que el síntoma existe en el historial
           const sintomaExiste = historial.sintomas.some(s => s._id.toString() === datos.sintoma_id);
           if (!sintomaExiste) {
             return res.status(400).json({ success: false, message: 'El síntoma especificado no existe en el historial' });
           }
           entrada.sintomas_relacionados = [datos.sintoma_id];
         }
+        if (datos.documento_id) {
+          const documentoExiste = historial.documentos.some(d => d._id.toString() === datos.documento_id);
+          if (!documentoExiste) {
+            return res.status(400).json({ success: false, message: 'El documento especificado no existe en el historial' });
+          }
+          entrada.documento_relacionado = datos.documento_id;
+        }
         historial.diagnosticos.push(entrada);
-        notificacionTipo = 'Nuevo Diagnóstico';
-        notificacionMensaje = `Se ha registrado un nuevo diagnóstico: ${datos.descripcion}`;
+        notificacionTipo = 'Actualización de Historial';
+        notificacionMensaje = `El paciente ${paciente.nombre_completo} ha añadido un diagnóstico en su historial: ${datos.descripcion}`;
         break;
       case 'tratamientos':
         if (registrador.rol !== 'Médico') {
@@ -136,9 +141,7 @@ const guardarEntrada = async (req, res) => {
         if (!datos.descripcion) {
           return res.status(400).json({ success: false, message: 'La descripción del tratamiento es requerida' });
         }
-        // Si se proporciona un diagnostico_id, añadirlo a diagnostico_relacionado
         if (datos.diagnostico_id) {
-          // Verificar que el diagnóstico existe en el historial
           const diagnosticoExiste = historial.diagnosticos.some(d => d._id.toString() === datos.diagnostico_id);
           if (!diagnosticoExiste) {
             return res.status(400).json({ success: false, message: 'El diagnóstico especificado no existe en el historial' });
@@ -146,8 +149,8 @@ const guardarEntrada = async (req, res) => {
           entrada.diagnostico_relacionado = datos.diagnostico_id;
         }
         historial.tratamientos.push(entrada);
-        notificacionTipo = 'Nuevo Tratamiento';
-        notificacionMensaje = `Se ha registrado un nuevo tratamiento: ${datos.descripcion}`;
+        notificacionTipo = 'Actualización de Historial';
+        notificacionMensaje = `El paciente ${paciente.nombre_completo} ha añadido un tratamiento en su historial: ${datos.descripcion}`;
         break;
       case 'medicamentos':
         if (registrador.rol !== 'Médico') {
@@ -159,9 +162,7 @@ const guardarEntrada = async (req, res) => {
         if (!datos.nombre || !datos.dosis || !datos.frecuencia) {
           return res.status(400).json({ success: false, message: 'Nombre, dosis y frecuencia son requeridos para medicamentos' });
         }
-        // Si se proporciona un tratamiento_id, añadirlo a tratamiento_relacionado
         if (datos.tratamiento_id) {
-          // Verificar que el tratamiento existe en el historial
           const tratamientoExiste = historial.tratamientos.some(t => t._id.toString() === datos.tratamiento_id);
           if (!tratamientoExiste) {
             return res.status(400).json({ success: false, message: 'El tratamiento especificado no existe en el historial' });
@@ -169,8 +170,8 @@ const guardarEntrada = async (req, res) => {
           entrada.tratamiento_relacionado = datos.tratamiento_id;
         }
         historial.medicamentos.push(entrada);
-        notificacionTipo = 'Nuevo Medicamento';
-        notificacionMensaje = `Se ha registrado un nuevo medicamento: ${datos.nombre}, Dosis: ${datos.dosis}, Frecuencia: ${datos.frecuencia}`;
+        notificacionTipo = 'Actualización de Historial';
+        notificacionMensaje = `El paciente ${paciente.nombre_completo} ha añadido un medicamento en su historial: ${datos.nombre}, Dosis: ${datos.dosis}, Frecuencia: ${datos.frecuencia}`;
         break;
       case 'ordenes_analisis':
         if (registrador.rol !== 'Médico') {
@@ -183,22 +184,22 @@ const guardarEntrada = async (req, res) => {
           return res.status(400).json({ success: false, message: 'Orden ID y tipo son requeridos para órdenes de análisis' });
         }
         historial.ordenes_analisis.push(entrada);
-        notificacionTipo = 'Nueva Orden de Análisis';
-        notificacionMensaje = `Se ha registrado una nueva orden de análisis: ${datos.tipo} (ID: ${datos.orden_id})`;
+        notificacionTipo = 'Actualización de Historial';
+        notificacionMensaje = `El paciente ${paciente.nombre_completo} ha añadido una orden de análisis en su historial: ${datos.tipo} (ID: ${datos.orden_id})`;
         break;
       case 'resultados_analisis':
         if (!datos.orden_id || !datos.resultados) {
           return res.status(400).json({ success: false, message: 'Orden ID y resultados son requeridos para resultados de análisis' });
         }
         historial.resultados_analisis.push(entrada);
-        notificacionTipo = 'Nuevo Resultado de Análisis';
-        notificacionMensaje = `Se ha registrado un nuevo resultado de análisis para la orden ID: ${datos.orden_id}`;
+        notificacionTipo = 'Actualización de Historial';
+        notificacionMensaje = `El paciente ${paciente.nombre_completo} ha añadido un resultado de análisis en su historial para la orden ID: ${datos.orden_id}`;
         break;
       default:
         return res.status(400).json({ success: false, message: 'Tipo de entrada no válido' });
     }
 
-    // Crear una notificación para el paciente
+    // Notificación para el paciente
     if (notificacionTipo && notificacionMensaje) {
       const notificacion = new Notificacion({
         tipo: notificacionTipo,
@@ -206,10 +207,57 @@ const guardarEntrada = async (req, res) => {
         destinatario: pacienteCorreo,
         estado: 'Entregada',
         fecha: new Date(),
-        canal: 'app', // Campo requerido por el esquema
-        persona_id: paciente._id, // Campo requerido por el esquema
+        canal: 'app',
+        persona_id: paciente._id,
+        deletedBy: [],
       });
       await notificacion.save();
+    }
+
+    // Notificaciones para médicos asignados y con permiso si el registrador es paciente
+    if (registrador.rol === 'Paciente' && (tipo === 'sintomas' || tipo === 'resultados_analisis')) {
+      // Médico asignado
+      if (paciente.medico_asignado) {
+        const medicoAsignado = await Persona.findById(paciente.medico_asignado);
+        if (medicoAsignado) {
+          const notificacionMedico = new Notificacion({
+            tipo: 'Actualización de Historial',
+            contenido: `El paciente ${paciente.nombre_completo} ha añadido un ${tipo === 'sintomas' ? 'síntoma' : 'resultado de análisis'} en su historial: ${datos.descripcion || datos.resultados}`,
+            destinatario: medicoAsignado.correo,
+            estado: 'Entregada',
+            fecha: new Date(),
+            canal: 'app',
+            persona_id: medicoAsignado._id,
+            deletedBy: [],
+          });
+          await notificacionMedico.save();
+        }
+      }
+
+      // Médicos con permiso
+      if (paciente.medicos_con_permiso && paciente.medicos_con_permiso.length > 0) {
+        const medicosConPermiso = await Persona.find({
+          correo: { $in: paciente.medicos_con_permiso },
+          rol: 'Médico',
+        });
+        for (const medico of medicosConPermiso) {
+          // Evitar duplicar notificación si el médico con permiso es también el asignado
+          if (paciente.medico_asignado && medico._id.toString() === paciente.medico_asignado.toString()) {
+            continue;
+          }
+          const notificacionMedico = new Notificacion({
+            tipo: 'Actualización de Historial',
+            contenido: `El paciente ${paciente.nombre_completo} ha añadido un ${tipo === 'sintomas' ? 'síntoma' : 'resultado de análisis'} en su historial: ${datos.descripcion || datos.resultados}`,
+            destinatario: medico.correo,
+            estado: 'Entregada',
+            fecha: new Date(),
+            canal: 'app',
+            persona_id: medico._id,
+            deletedBy: [],
+          });
+          await notificacionMedico.save();
+        }
+      }
     }
 
     historial.ultima_actualizacion = new Date();
@@ -235,8 +283,8 @@ const subirResultadoAnalisis = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Usuario registrador no encontrado' });
     }
 
-    if (registrador.rol !== 'Paciente') {
-      return res.status(403).json({ success: false, message: 'Solo los pacientes pueden subir resultados de análisis' });
+    if (registrador.rol !== 'Paciente' && registrador.rol !== 'Médico') {
+      return res.status(403).json({ success: false, message: 'Solo pacientes y médicos pueden subir resultados de análisis' });
     }
 
     const paciente = await Persona.findOne({ correo: pacienteCorreo });
@@ -249,35 +297,88 @@ const subirResultadoAnalisis = async (req, res) => {
       return res.status(400).json({ success: false, message: 'El paciente no tiene historial médico' });
     }
 
-    // Verificar que la orden de análisis existe
     const orden = historial.ordenes_analisis.find(o => o.orden_id === orden_id);
     if (!orden) {
       return res.status(404).json({ success: false, message: 'Orden de análisis no encontrada' });
     }
 
-    // Guardar el documento PDF
     const documento = {
       nombre: file.originalname,
       ruta: file.path,
+      tipo: 'resultado_analisis',
       fecha: new Date(),
       registrado_por: registrador._id,
     };
     historial.documentos.push(documento);
 
-    // Eliminar la orden de análisis correspondiente
+    const nuevoResultado = {
+      fecha: new Date(),
+      orden_id: orden_id,
+      resultados: file.originalname,
+      registrado_por: registrador._id,
+    };
+    historial.resultados_analisis.push(nuevoResultado);
+
     historial.ordenes_analisis = historial.ordenes_analisis.filter(o => o.orden_id !== orden_id);
 
-    // Crear una notificación para el paciente
+    // Notificación para el paciente
     const notificacion = new Notificacion({
-      tipo: 'Resultado de Análisis Subido',
-      contenido: `Se ha subido un resultado de análisis para la orden ID: ${orden_id}`,
+      tipo: 'Actualización de Historial',
+      contenido: `El paciente ${paciente.nombre_completo} ha añadido un resultado de análisis en su historial para la orden ID: ${orden_id}`,
       destinatario: pacienteCorreo,
       estado: 'Entregada',
       fecha: new Date(),
       canal: 'app',
       persona_id: paciente._id,
+      deletedBy: [],
     });
     await notificacion.save();
+
+    // Notificaciones para médicos asignados y con permiso si el registrador es paciente
+    if (registrador.rol === 'Paciente') {
+      // Médico asignado
+      if (paciente.medico_asignado) {
+        const medicoAsignado = await Persona.findById(paciente.medico_asignado);
+        if (medicoAsignado) {
+          const notificacionMedico = new Notificacion({
+            tipo: 'Actualización de Historial',
+            contenido: `El paciente ${paciente.nombre_completo} ha subido un resultado de análisis en su historial para la orden ID: ${orden_id}`,
+            destinatario: medicoAsignado.correo,
+            estado: 'Entregada',
+            fecha: new Date(),
+            canal: 'app',
+            persona_id: medicoAsignado._id,
+            deletedBy: [],
+          });
+          await notificacionMedico.save();
+        }
+      }
+
+      // Médicos con permiso
+      if (paciente.medicos_con_permiso && paciente.medicos_con_permiso.length > 0) {
+        const medicosConPermiso = await Persona.find({
+          correo: { $in: paciente.medicos_con_permiso },
+          rol: 'Médico',
+        });
+        for (const medico of medicosConPermiso) {
+          // Evitar duplicar notificación si el médico con permiso es también el asignado
+          if (paciente.medico_asignado && medico._id.toString() === paciente.medico_asignado.toString()) {
+            continue;
+          }
+          const notificacionMedico = new Notificacion({
+            tipo: 'Actualización de Historial',
+            contenido: `El paciente ${paciente.nombre_completo} ha subido un resultado de análisis en su historial para la orden ID: ${orden_id}`,
+            destinatario: medico.correo,
+            estado: 'Entregada',
+            fecha: new Date(),
+            canal: 'app',
+            persona_id: medico._id,
+            deletedBy: [],
+          });
+          await notificacionMedico.save();
+        }
+      }
+    }
 
     historial.ultima_actualizacion = new Date();
     await historial.save();
@@ -326,21 +427,22 @@ const subirDocumento = async (req, res) => {
     const documento = {
       nombre: file.originalname,
       ruta: file.path,
+      tipo: 'otro',
       fecha: new Date(),
       registrado_por: registrador._id,
     };
 
     historial.documentos.push(documento);
 
-    // Crear una notificación para el paciente
     const notificacion = new Notificacion({
-      tipo: 'Nuevo Documento',
-      contenido: `Se ha subido un nuevo documento: ${file.originalname}`,
+      tipo: 'Actualización de Historial',
+      contenido: `El paciente ${paciente.nombre_completo} ha añadido un documento en su historial: ${file.originalname}`,
       destinatario: pacienteCorreo,
       estado: 'Entregada',
       fecha: new Date(),
       canal: 'app',
       persona_id: paciente._id,
+      deletedBy: [],
     });
     await notificacion.save();
 
@@ -528,7 +630,6 @@ const analyzeSymptoms = async (req, res) => {
   try {
     const { symptomsText } = req.body;
 
-    // Configura el prompt para Google Gemini con instrucciones más claras
     const prompt = `
       Eres un asistente médico de IA especializado en diagnóstico. Analiza los síntomas proporcionados y genera una respuesta estructurada con posibles diagnósticos y recomendaciones de tratamiento. Responde en español y usa un lenguaje claro y profesional. Si los síntomas sugieren una condición grave, recomienda consultar a un médico de inmediato. No uses enlaces externos ni referencias a blogs.
 
@@ -541,11 +642,11 @@ const analyzeSymptoms = async (req, res) => {
       - En las recomendaciones, evita texto introductorio redundante y enfócate en instrucciones específicas.
 
       **Formato de respuesta obligatorio:**
-      Síntomas detectados:
+      Síntomas detectados:
       - [Síntoma 1]
       - [Síntoma 2]
 
-      Posibles diagnósticos:
+      Posibles diagnósticos:
       - [Diagnóstico 1] ([probabilidad estimada en %])
       - [Diagnóstico 2] ([probabilidad estimada en %])
 
@@ -556,7 +657,6 @@ const analyzeSymptoms = async (req, res) => {
       - [Recomendación 2]
     `;
 
-    // Configura la solicitud a la Google Gemini API
     const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
 
@@ -587,7 +687,6 @@ const analyzeSymptoms = async (req, res) => {
     const geminiResponse = response.data.candidates[0].content.parts[0].text;
     console.log('Respuesta cruda de Google Gemini:', geminiResponse);
 
-    // Procesa la respuesta de Gemini para extraer síntomas, diagnósticos y tratamientos
     const lines = geminiResponse.split('\n').filter(line => line.trim() !== '');
     let symptoms = [];
     let possibleDiagnoses = [];
@@ -596,7 +695,6 @@ const analyzeSymptoms = async (req, res) => {
 
     let currentSection = '';
     for (const line of lines) {
-      // Detecta las secciones
       if (line.includes('Síntomas detectados:')) {
         currentSection = 'symptoms';
         continue;
@@ -611,7 +709,6 @@ const analyzeSymptoms = async (req, res) => {
         continue;
       }
 
-      // Extrae información según la sección
       if (currentSection === 'symptoms' && line.startsWith('-')) {
         symptoms.push(line.replace('- ', '').trim());
       } else if (currentSection === 'diagnoses' && line.startsWith('-')) {
@@ -634,23 +731,19 @@ const analyzeSymptoms = async (req, res) => {
       }
     }
 
-    // Si no se encontraron síntomas, extrae directamente de symptomsText
     if (symptoms.length === 0) {
       symptoms = symptomsText.toLowerCase().split(',').map(s => s.trim());
     }
 
-    // Si el diagnóstico principal es "Desconocido" y hay posibles diagnósticos, usa el de mayor probabilidad
     if (diagnosis === 'Desconocido' && possibleDiagnoses.length > 0) {
       possibleDiagnoses.sort((a, b) => b.probability - a.probability);
       diagnosis = possibleDiagnoses[0].diagnosis;
     }
 
-    // Si no hay tratamiento, usa un valor predeterminado
     if (!treatment) {
       treatment = 'Consulta a un médico para un diagnóstico preciso.';
     }
 
-    // Crear un texto completo para copiar
     const fullDiagnosisText = `
 Síntomas detectados:
 ${symptoms.map(s => `- ${s}`).join('\n')}
@@ -677,7 +770,6 @@ ${treatment.trim().split('\n').map(t => `- ${t}`).join('\n')}
   }
 };
 
-// Exporta todas las funciones
 module.exports = {
   obtenerPorCorreo,
   guardarEntrada,

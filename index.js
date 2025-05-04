@@ -1,32 +1,47 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const cors = require('cors');
-const dotenv = require('dotenv');
-const connectDB = require('./config/database');
 const personaRoutes = require('./routes/personaRoutes');
+const citaRoutes = require('./routes/citaRoutes');
 const historialRoutes = require('./routes/historialRoutes');
+const notificacionRoutes = require('./routes/notificacionRoutes');
 const mensajeRoutes = require('./routes/mensajeRoutes');
-const notificacionRoutes = require('./routes/notificacionRoutes'); // Añadimos las rutas de notificaciones
-
-dotenv.config();
+const alarmaRoutes = require('./routes/alarmaRoutes');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
 
-// Conectar a MongoDB
-connectDB();
+// Conexión a MongoDB
+mongoose.connect('mongodb://localhost:27017/saludgest', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+  .then(() => console.log('Conectado a MongoDB'))
+  .catch(err => console.error('Error al conectar a MongoDB:', err));
 
 // Rutas
 app.use('/api/pacientes', personaRoutes);
+app.use('/api/citas', citaRoutes);
 app.use('/api/historial', historialRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
 app.use('/api/mensajes', mensajeRoutes);
-app.use('/api/notificaciones', notificacionRoutes); // Montamos las rutas de notificaciones
+app.use('/api/alarmas', alarmaRoutes);
 
-// Iniciar el servidor
+// Manejo de rutas no encontradas
+app.use((req, res, next) => {
+  res.status(404).json({ success: false, message: 'Ruta no encontrada' });
+});
+
+// Manejo de errores
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ success: false, message: 'Error en el servidor' });
+});
+
+const PORT = 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Servidor corriendo en el puerto ${PORT}`);
 });

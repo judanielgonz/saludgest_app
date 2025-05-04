@@ -1,6 +1,5 @@
 const Cita = require('../models/Cita');
 const Persona = require('../models/Persona');
-const notificacionController = require('./notificacionController');
 
 exports.agendarCita = async (req, res) => {
   const { pacienteCorreo, medicoCorreo, fecha, hora_inicio, hora_fin } = req.body;
@@ -19,22 +18,6 @@ exports.agendarCita = async (req, res) => {
     });
     await cita.save();
 
-    // Enviar notificación al paciente
-    await notificacionController.crearYEnviarNotificacion(
-      paciente._id,
-      'Cita',
-      `Tienes una cita programada con ${medico.nombre_completo} el ${fecha} de ${hora_inicio} a ${hora_fin}`,
-      'Push'
-    );
-
-    // Enviar notificación al médico
-    await notificacionController.crearYEnviarNotificacion(
-      medico._id,
-      'Cita',
-      `Tienes una cita programada con ${paciente.nombre_completo} el ${fecha} de ${hora_inicio} a ${hora_fin}`,
-      'Push'
-    );
-
     res.status(201).json({ success: true, cita });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
@@ -49,4 +32,38 @@ exports.getCitas = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-//este codigo se llama citaController.js
+
+exports.cancelarCita = async (req, res) => {
+  const { citaId, usuarioCorreo, tipoUsuario } = req.body;
+  try {
+    if (!citaId || !usuarioCorreo || !tipoUsuario) {
+      return res.status(400).json({ success: false, message: 'Faltan datos requeridos (citaId, usuarioCorreo, tipoUsuario)' });
+    }
+
+    const cita = await Cita.findById(citaId);
+    if (!cita) {
+      return res.status(404).json({ success: false, message: 'Cita no encontrada' });
+    }
+
+    const paciente = await Persona.findById(cita.persona_paciente_id);
+    const medico = await Persona.findById(cita.persona_medico_id);
+
+    if (!paciente || !medico) {
+      return res.status(404).json({ success: false, message: 'Paciente o médico no encontrado' });
+    }
+
+    if (tipoUsuario === 'paciente' && paciente.correo !== usuarioCorreo) {
+      return res.status(403).json({ success: false, message: 'No tienes permiso para cancelar esta cita' });
+    }
+    if (tipoUsuario === 'medico' && medico.correo !== usuarioCorreo) {
+      return res.status(403).json({ success: false, message: 'No tienes permiso para cancelar esta cita' });
+    }
+
+    await Cita.deleteOne({ _id: citaId });
+
+    res.status(200).json({ success: true, message: 'Cita cancelada con éxito' });
+  } catch (error) {
+    console.error('Error al cancelar cita:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};

@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const HistorialMedicoSchema = new mongoose.Schema({
   persona_paciente_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
-  persona_medico_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona' }, // No requerido inicialmente
+  persona_medico_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona' },
   sintomas: [
     {
       fecha: { type: Date, default: Date.now },
@@ -16,6 +16,7 @@ const HistorialMedicoSchema = new mongoose.Schema({
       descripcion: { type: String, required: true },
       registrado_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
       sintomas_relacionados: [{ type: mongoose.Schema.Types.ObjectId, ref: 'HistorialMedico.sintomas' }],
+      documento_relacionado: { type: mongoose.Schema.Types.ObjectId, ref: 'HistorialMedico.documentos' }, // Nuevo campo para enlazar con resultado de análisis
     },
   ],
   tratamientos: [
@@ -23,7 +24,7 @@ const HistorialMedicoSchema = new mongoose.Schema({
       fecha: { type: Date, default: Date.now },
       descripcion: { type: String, required: true },
       registrado_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
-      diagnostico_relacionado: { type: mongoose.Schema.Types.ObjectId, ref: 'HistorialMedico.diagnosticos' }, // Correct reference
+      diagnostico_relacionado: { type: mongoose.Schema.Types.ObjectId, ref: 'HistorialMedico.diagnosticos' },
     },
   ],
   medicamentos: [
@@ -50,7 +51,7 @@ const HistorialMedicoSchema = new mongoose.Schema({
     {
       orden_id: { type: String, required: true },
       fecha: { type: Date, default: Date.now },
-      resultados: { type: Map, of: String },
+      resultados: { type: String, required: true },
       registrado_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
     },
   ],
@@ -58,6 +59,7 @@ const HistorialMedicoSchema = new mongoose.Schema({
     {
       nombre: { type: String, required: true },
       ruta: { type: String, required: true },
+      tipo: { type: String, enum: ['resultado_analisis', 'otro'], default: 'otro' },
       fecha: { type: Date, default: Date.now },
       registrado_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Persona', required: true },
     },
